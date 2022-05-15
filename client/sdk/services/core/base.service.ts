@@ -1,21 +1,34 @@
 /* tslint:disable */
 import { Injectable, Inject, Optional } from '@angular/core';
-import { HttpClient, HttpHeaders, HttpRequest, HttpParams, HttpResponse } from '@angular/common/http';
+import { HttpClient, HttpHeaders, HttpRequest, HttpParams, HttpResponse, HttpParameterCodec } from '@angular/common/http';
 import { NgModule, ModuleWithProviders } from '@angular/core';
 import { ErrorHandler } from './error.service';
 import { LoopBackAuth } from './auth.service';
 import { LoopBackConfig } from '../../lb.config';
 import { LoopBackFilter, AccessToken } from '../../models/BaseModels';
 import { SDKModels } from '../custom/SDKModels';
-import { Observable } from 'rxjs/Observable';
-import { Subject } from 'rxjs/Subject';
-import { ErrorObservable } from 'rxjs/observable/ErrorObservable';
-import 'rxjs/add/operator/catch';
-import 'rxjs/add/operator/map';
-import 'rxjs/add/operator/filter';
+import { Observable, Subject } from 'rxjs';
+import { catchError, map, filter } from 'rxjs/operators';
 import { SocketConnection } from '../../sockets/socket.connections';
 // Making Sure EventSource Type is available to avoid compilation issues.
 declare var EventSource: any;
+class CustomQueryEncoderHelper implements HttpParameterCodec {
+  encodeKey(k: string): string {
+      return encodeURIComponent(k);
+  }
+
+  encodeValue(v: string): string {
+      return encodeURIComponent(v);
+  }
+
+  decodeKey(k: string): string {
+      return decodeURIComponent(k);
+  }
+
+  decodeValue(v: string): string {
+      return decodeURIComponent(v);
+  }
+}
 /**
 * @module BaseLoopBackApi
 * @author Jonathan Casarrubias <@johncasarrubias> <github:jonathan-casarrubias>
@@ -77,7 +90,7 @@ export abstract class BaseLoopBackApi {
       this.connection.on(event, (res: any) => subject.next(res));
       return subject.asObservable();
     } else {
-      let httpParams = new HttpParams();
+      let httpParams = new HttpParams({ encoder: new CustomQueryEncoderHelper() });
       // Headers to be sent
       let headers: HttpHeaders = new HttpHeaders();
       headers = headers.append('Content-Type', 'application/json');
@@ -142,15 +155,16 @@ TODO Fix Merge Conflict */
         paramValue = typeof paramValue === 'object' ? JSON.stringify(paramValue) : paramValue;
         httpParams = httpParams.append(paramKey, paramValue);
       });
-      let request = new HttpRequest(method, url, body, {
+      let request = new HttpRequest(method, `${url}${queryString}`, body, {
         headers        : headers,
         params         : httpParams,
         withCredentials: LoopBackConfig.getRequestOptionsCredentials()
       });
-      return this.http.request(request)
-        .filter(event => event instanceof HttpResponse)
-        .map((res: HttpResponse<any>) => res.body)
-        .catch((e) => this.errorHandler.handleError(e));
+      return this.http.request(request).pipe(
+        filter(event => event instanceof HttpResponse),
+        map((res: HttpResponse<any>) => res.body),
+        catchError((e) => this.errorHandler.handleError(e))
+      );
     }
   }
   /**
@@ -187,7 +201,8 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getPath(),
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path
-    ].join('/'), undefined, undefined, { data }, null, customHeaders).map((data: T) => this.model.factory(data));
+    ].join('/'), undefined, undefined, { data }, null, customHeaders)
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method onCreate
@@ -204,7 +219,7 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path
     ].join('/'), undefined, undefined, { data }, true)
-    .map((datum: T[]) => datum.map((data: T) => this.model.factory(data)));
+    .pipe(map((datum: T[]) => datum.map((data: T) => this.model.factory(data))));
   }
   /**
    * @method createMany
@@ -221,7 +236,7 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path
     ].join('/'), undefined, undefined, { data }, null, customHeaders)
-    .map((datum: T[]) => datum.map((data: T) => this.model.factory(data)));
+    .pipe(map((datum: T[]) => datum.map((data: T) => this.model.factory(data))));
   }
   /**
    * @method onCreateMany
@@ -238,7 +253,7 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path
     ].join('/'), undefined, undefined, { data }, true)
-    .map((datum: T[]) => datum.map((data: T) => this.model.factory(data)));
+    .pipe(map((datum: T[]) => datum.map((data: T) => this.model.factory(data))));
   }
   /**
    * @method findById
@@ -258,7 +273,7 @@ TODO Fix Merge Conflict */
       this.model.getModelDefinition().path,
       ':id'
     ].join('/'), { id }, _urlParams, undefined, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method find
@@ -274,7 +289,7 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path
     ].join('/'), undefined, { filter }, undefined, null, customHeaders)
-    .map((datum: T[]) => datum.map((data: T) => this.model.factory(data)));
+    .pipe(map((datum: T[]) => datum.map((data: T) => this.model.factory(data))));
   }
   /**
    * @method exists
@@ -307,7 +322,7 @@ TODO Fix Merge Conflict */
       this.model.getModelDefinition().path,
       'findOne'
     ].join('/'), undefined, { filter }, undefined, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method updateAll
@@ -360,7 +375,7 @@ TODO Fix Merge Conflict */
       this.model.getModelDefinition().path,
       ':id'
     ].join('/'), { id }, undefined, undefined, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method onDeleteById
@@ -376,7 +391,8 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
       ':id'
-    ].join('/'), { id }, undefined, undefined, true).map((data: T) => this.model.factory(data));
+    ].join('/'), { id }, undefined, undefined, true)
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method count
@@ -411,7 +427,7 @@ TODO Fix Merge Conflict */
       this.model.getModelDefinition().path,
       ':id'
     ].join('/'), { id }, undefined, { data }, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method onUpdateAttributes
@@ -427,7 +443,8 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
       ':id'
-    ].join('/'), { id }, undefined, { data }, true).map((data: T) => this.model.factory(data));
+    ].join('/'), { id }, undefined, { data }, true)
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method upsert
@@ -443,7 +460,7 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
     ].join('/'), undefined, undefined, { data }, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method onUpsert
@@ -458,7 +475,8 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getPath(),
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
-    ].join('/'), undefined, undefined, { data }, true).map((data: T) => this.model.factory(data));
+    ].join('/'), undefined, undefined, { data }, true)
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method upsertPatch
@@ -474,7 +492,7 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
     ].join('/'), undefined, undefined, { data }, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method onUpsertPatch
@@ -489,7 +507,8 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getPath(),
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
-    ].join('/'), undefined, undefined, { data }, true).map((data: T) => this.model.factory(data));
+    ].join('/'), undefined, undefined, { data }, true)
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method upsertWithWhere
@@ -508,7 +527,7 @@ TODO Fix Merge Conflict */
       this.model.getModelDefinition().path,
       'upsertWithWhere'
     ].join('/'), undefined, _urlParams, { data }, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method onUpsertWithWhere
@@ -526,7 +545,8 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
       'upsertWithWhere'
-    ].join('/'), undefined, _urlParams, { data }, true).map((data: T) => this.model.factory(data));
+    ].join('/'), undefined, _urlParams, { data }, true)
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method replaceOrCreate
@@ -543,7 +563,7 @@ TODO Fix Merge Conflict */
       this.model.getModelDefinition().path,
       'replaceOrCreate'
     ].join('/'), undefined, undefined, { data }, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method onReplaceOrCreate
@@ -559,7 +579,8 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
       'replaceOrCreate'
-    ].join('/'), undefined, undefined, { data }, true).map((data: T) => this.model.factory(data));
+    ].join('/'), undefined, undefined, { data }, true)
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method replaceById
@@ -576,7 +597,7 @@ TODO Fix Merge Conflict */
       this.model.getModelDefinition().path,
       ':id', 'replace'
     ].join('/'), { id }, undefined, { data }, null, customHeaders)
-    .map((data: T) => this.model.factory(data));
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method onReplaceById
@@ -592,7 +613,8 @@ TODO Fix Merge Conflict */
       LoopBackConfig.getApiVersion(),
       this.model.getModelDefinition().path,
       ':id', 'replace'
-    ].join('/'), { id }, undefined, { data }, true).map((data: T) => this.model.factory(data));
+    ].join('/'), { id }, undefined, { data }, true)
+    .pipe(map((data: T) => this.model.factory(data)));
   }
   /**
    * @method createChangeStream

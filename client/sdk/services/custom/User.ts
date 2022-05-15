@@ -7,8 +7,8 @@ import { LoopBackConfig } from '../../lb.config';
 import { LoopBackAuth } from '../core/auth.service';
 import { LoopBackFilter, SDKToken, AccessToken } from '../../models/BaseModels';
 import { ErrorHandler } from '../core/error.service';
-import { Subject } from 'rxjs/Subject';
-import { Observable } from 'rxjs/Rx';
+import { Observable, Subject } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { User } from '../../models/User';
 import { SocketConnection } from '../../sockets/socket.connections';
 
@@ -336,13 +336,15 @@ export class UserApi extends BaseLoopBackApi {
     let _urlParams: any = {};
     if (typeof include !== 'undefined' && include !== null) _urlParams.include = include;
     let result = this.request(_method, _url, _routeParams, _urlParams, _postBody, null, customHeaders)
-      .map(
+      .pipe(
+        map(
         (response: any) => {
           response.ttl = parseInt(response.ttl);
           response.rememberMe = rememberMe;
           this.auth.setToken(response);
           return response;
         }
+      )
       );
       return result;
       
